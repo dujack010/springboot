@@ -1,6 +1,7 @@
 package com.example.hbase.admin;
 
-import com.example.hbase.pojo.BaseBean;
+import com.example.hbase.pojo.BatchBean;
+import com.example.hbase.pojo.SingleBean;
 import com.example.hbase.utils.HBaseUtil;
 import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.*;
@@ -9,8 +10,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.io.IOException;
-import java.util.Map;
-import java.util.Set;
+import java.util.List;
 
 /**
  * Created by DuJunchen on 2017/4/13.
@@ -23,20 +23,18 @@ public class HBaseAdmin {
     HBaseUtil util;
 
     /**
-     * 单条数据写入
+     * 批量写入
+     * @param bean
      */
-    public void put(BaseBean bean){
-        Put put = new Put(bean.getRowKey().getBytes());
-        Map column = bean.getColumn();
-        Set<Map.Entry> set = column.entrySet();
-        for (Map.Entry entry : set) {
-            put.addColumn(bean.getFamilyName().getBytes(),entry.getKey().toString().getBytes(),entry.getValue().toString().getBytes());
-        }
-        Connection connection = util.getConnection();
+    public void batchPut(BatchBean bean){
+        long start = System.currentTimeMillis();
+        List<Put> putList = bean.getPutList();
         Table table = null;
         try {
-            table = connection.getTable(TableName.valueOf(bean.getTableName()));
-            table.put(put);
+            table = util.getConnection().getTable(TableName.valueOf(bean.getTableName()));
+            table.put(putList);
+            long end = System.currentTimeMillis();
+            System.out.println("HBASE批量用时:"+(end-start));
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
@@ -51,12 +49,62 @@ public class HBaseAdmin {
     }
 
     /**
-     * 批量获取数据
+     * 单条数据写入
      */
-    public ResultScanner scan(BaseBean bean){
-        byte[] familyName = bean.getFamilyName().getBytes();
-        Scan scan = new Scan(bean.getStartRow().getBytes(),bean.getEndRow().getBytes());
-        scan.addFamily(bean.getFamilyName().getBytes());
+    public void put(SingleBean bean){
+        long start = System.currentTimeMillis();
+        Put put = bean.getPut();
+        Table table = null;
+        try {
+            table = util.getConnection().getTable(TableName.valueOf(bean.getTableName()));
+            table.put(put);
+            long end = System.currentTimeMillis();
+            System.out.println("HBASE用时:"+(end-start));
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if(table!=null){
+                try {
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    /**
+     * 单条获取数据
+     * @param bean
+     */
+    public Result get(SingleBean bean){
+        Get get = bean.getGet();
+        Table table = null;
+        try {
+            table = util.getConnection().getTable(TableName.valueOf(bean.getTableName()));
+            Result result = table.get(get);
+            return result;
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if(table!=null){
+                try {
+                    table.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return new Result();
+    }
+
+    /**
+     * scan操作
+     * @param bean
+     * @return
+     */
+    public ResultScanner scan(SingleBean bean){
+        Scan scan = bean.getScan();
         Table table = null;
         try {
             table = util.getConnection().getTable(TableName.valueOf(bean.getTableName()));
@@ -75,6 +123,4 @@ public class HBaseAdmin {
         }
         return null;
     }
-
-
 }

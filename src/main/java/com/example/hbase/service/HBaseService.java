@@ -1,7 +1,10 @@
 package com.example.hbase.service;
 
 import com.example.hbase.admin.HBaseAdmin;
-import com.example.hbase.pojo.BaseBean;
+import com.example.hbase.pojo.BatchBean;
+import com.example.hbase.pojo.SingleBean;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
 import org.springframework.stereotype.Service;
 
 /**
@@ -9,11 +12,20 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class HBaseService extends HBaseAdmin {
-    public void testPut(BaseBean bean) {
+
+    public void put(SingleBean bean) {
         super.put(bean);
     }
 
-    public void testScan(BaseBean bean){
-        super.scan(bean);
+    public Result get(SingleBean bean) {
+        return super.get(bean);
+    }
+
+    public ResultScanner scan(SingleBean bean){
+        return super.scan(bean);
+    }
+
+    public void batchPut(BatchBean bean){
+        super.batchPut(bean);
     }
 }
