@@ -29,10 +29,10 @@ import java.util.Set;
 @SpringBootTest
 public class RecommendDataFilter {
 
-    private static final String score="customer_score";
+    private static final String score="customer_score_hbase";
     private static final String scoreTable="score_profile";
-    private static final String scoreFamily="score";
-    private static final String redis_key_prefix="recommend:customer:score:profile:";
+    private static final String scoreFamily="scores";
+    private static final String redis_key_prefix="recommend:user:score:profile:";
 
     @Autowired
     HBaseService service;
@@ -80,12 +80,18 @@ public class RecommendDataFilter {
     }
 
     /**
+     *
+     * public void cuser_profile
+     */
+
+
+    /**
      * 用户打分表存入redis
      */
     @Test
     public void customerScoreToRedis(){
         Scan scan = new Scan();
-        scan.setFilter(new ColumnPrefixFilter(Bytes.toBytes("scores")));
+        scan.setFilter(new ColumnPrefixFilter(Bytes.toBytes("score")));
         singleBean.setTableName(score);
         singleBean.setScan(scan);
         ResultScanner results = service.scan(singleBean);
@@ -94,8 +100,9 @@ public class RecommendDataFilter {
         Pipeline pipelined = resource.pipelined();
         int counter = 0;
         for (Result result : results) {
-            String score = Bytes.toString(result.getValue(Bytes.toBytes(scoreFamily), Bytes.toBytes("scores")));
+            String score = Bytes.toString(result.getValue(Bytes.toBytes(scoreFamily), Bytes.toBytes("score")));
             String rowKey = Bytes.toString(result.getRow());
+            //rowkey结构 cId_rId/rType
             String[] ids = rowKey.split("_");
             String key = redis_key_prefix + ids[0];
             double v = Double.parseDouble(score);
@@ -153,20 +160,22 @@ public class RecommendDataFilter {
         Put put = new Put(Bytes.toBytes(customerId));
         for (Result next : result) {
             String s = Bytes.toString(next.getRow());
-            String[] split = s.split("_");
-            String score = Bytes.toString(next.getValue(Bytes.toBytes(scoreFamily), Bytes.toBytes("scores")));
-            put.addColumn(Bytes.toBytes(scoreFamily),Bytes.toBytes(split[1]),Bytes.toBytes(score));
+            String[] split = s.split("/");
+            String resourceId = split[1].substring(split.length-1,split.length);
+            System.out.println(resourceId);
+            //String score = Bytes.toString(next.getValue(Bytes.toBytes(scoreFamily), Bytes.toBytes("score")));
+            //put.addColumn(Bytes.toBytes(scoreFamily),Bytes.toBytes(resourceId),Bytes.toBytes(score));
         }
-        singleBean.setPut(put);
-        singleBean.setTableName(scoreTable);
-        service.put(singleBean);
+        //singleBean.setPut(put);
+        //singleBean.setTableName(scoreTable);
+        //service.put(singleBean);
     }
 
     private FilterList getFilterList(String prefix){
         List<Filter> filters = new ArrayList<>();
         PrefixFilter pf = new PrefixFilter(Bytes.toBytes(prefix));
         filters.add(pf);
-        Filter cpf = new ColumnPrefixFilter(Bytes.toBytes("scores"));
+        Filter cpf = new ColumnPrefixFilter(Bytes.toBytes("score"));
         filters.add(cpf);
         return new FilterList(FilterList.Operator.MUST_PASS_ALL, filters);
     }

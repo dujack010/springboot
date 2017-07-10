@@ -5,10 +5,11 @@ import com.example.hbase.pojo.CmsResourceProperty;
 import com.example.hbase.pojo.SingleBean;
 import com.example.hbase.service.HBaseService;
 import com.example.hbase.utils.JDBCUtil;
-import org.apache.hadoop.hbase.client.*;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.filter.BinaryComparator;
 import org.apache.hadoop.hbase.filter.CompareFilter;
-import org.apache.hadoop.hbase.filter.KeyOnlyFilter;
 import org.apache.hadoop.hbase.filter.ValueFilter;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.junit.Test;
@@ -45,10 +46,11 @@ public class HbaseApplicationTests {
 	public void initAll(){
 		try {
 			//updateData();
-            long start = System.currentTimeMillis();
+            //long start = System.currentTimeMillis();
             initUserProfile();
-            long end = System.currentTimeMillis();
-            System.out.println(end-start);
+			//updateData();
+            //long end = System.currentTimeMillis();
+            //System.out.println(end-start);
         } catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -63,16 +65,10 @@ public class HbaseApplicationTests {
 		//获取所有标签id
 		String sql = "SELECT property_id FROM comm_data_property WHERE is_valid = 1";
 		List<Long> propertyIdList = jdbcUtil.getIdList(sql, "property_id");
-		//获取活跃用户id
-		Scan scan = new Scan();
-		scan.setFilter(new KeyOnlyFilter());
-		singleBean.setScan(scan);
-		singleBean.setTableName(scoreTable);
-		ResultScanner scanResult = service.scan(singleBean);
-		List<String> customerIdList = new ArrayList<>();
-        for (Result result : scanResult) {
-            customerIdList.add(Bytes.toString(result.getRow()));
-        }
+		System.out.println(propertyIdList.size());
+		//获取用户id
+		sql = "SELECT customer_id FROM customer_auth WHERE state = 1 or state = 2";
+		List<Long> customerIdList = jdbcUtil.getIdList(sql, "customer_id");
         //Hbase批量处理
 		List<Put> putList = new ArrayList();
 		batchBean.setTableName(userProfile);
@@ -81,22 +77,24 @@ public class HbaseApplicationTests {
 		byte[] family = Bytes.toBytes(profileFamily);
 		int counter = 0;
         System.out.println(customerIdList.size());
-        for (String customerId : customerIdList) {
-			Put put = new Put(Bytes.toBytes(customerId));
+        /*for (Long customerId : customerIdList) {
+			Put put = new Put(Bytes.toBytes(String.valueOf(customerId)));
 			for (Long propertyId : propertyIdList) {
-				put.addColumn(family,Bytes.toBytes(propertyId),Bytes.toBytes(0));
+				put.addColumn(family,Bytes.toBytes(String.valueOf(propertyId)),Bytes.toBytes(String.valueOf(0)));
 			}
-            //putList.add(put);
-            singleBean.setPut(put);
-			service.put(singleBean);
-			/*counter++;
-			if(counter==5){
+            putList.add(put);
+            //singleBean.setPut(put);
+			//service.put(singleBean);
+			counter++;
+			if(counter==10){
+				System.out.println("凑够10条");
 				batchBean.setPutList(putList);
-				service.batchPut(batchBean);
+				//service.batchPut(batchBean);
 				counter=0;
-				//Thread.sleep(200);
-			}*/
-		}
+				System.out.println("休息");
+				Thread.sleep(1500);
+			}
+		}*/
 	}
 
 	/**
@@ -104,36 +102,50 @@ public class HbaseApplicationTests {
 	 * 从数据库中读取所有带标签的resource_id
 	 * 从数据库中读取所有标签id
 	 * rowkey为resource_id, columns为所有标签id,值全部为0
+	 * 初始化速度太慢 抛弃
 	 */
 	private void fillData(){
-		String sql = "SELECT resource_id FROM cms_resource_property WHERE is_valid = 1 GROUP BY resource_id";
-		List<Long> resourceIdList = jdbcUtil.getIdList(sql, "resource_id");
+		String sql = "SELECT CONCAT(resource_id,'/',resource_type) as new_id FROM cms_resource_property WHERE is_valid = 1 GROUP BY resource_id,resource_type having new_id is not null";
+		List<String> resourceIdList = jdbcUtil.getStringList(sql, "new_id");
+		System.out.println(resourceIdList.size());
 		sql = "SELECT property_id FROM comm_data_property WHERE is_valid = 1";
 		List<Long> propertyIdList = jdbcUtil.getIdList(sql, "property_id");
 		singleBean.setTableName(itemProfile);
-		//List<Put> putList = new ArrayList();
+		batchBean.setTableName(itemProfile);
+		List<Put> putList = new ArrayList();
 		byte[] family = Bytes.toBytes(profileFamily);
+		int counter = 0;
 		for (int i = 0,j=resourceIdList.size(); i < j; i++) {
 			Put put = new Put(Bytes.toBytes(resourceIdList.get(i)));
 			for (Long propertyId : propertyIdList) {
 				put.addColumn(family,Bytes.toBytes(propertyId),Bytes.toBytes(0));
 			}
+			//putList.add(put);
+			/*counter++;
+			if(counter==3){
+				batchBean.setPutList(putList);
+				service.batchPut(batchBean);
+				counter = 0;
+			}*/
 			singleBean.setPut(put);
 			service.put(singleBean);
 		}
 	}
 
 	/**
-	 * 对每一个resource_id,如果有标签，则对应标签值改为1
+	 * 按资源id和类型分组
+	 * 资源id/资源类型作为新的id,组内所有标签id以","分割拼串
+	 * 向hbase item_profile表初始化数据，只存储资源下已有的标签列
 	 */
 	private void updateData() throws InterruptedException {
-		String sql = "SELECT resource_id,GROUP_CONCAT(property_id SEPARATOR ',') as property_id_list FROM cms_resource_property WHERE is_valid = 1 AND resource_id is not null GROUP BY resource_id";
+//		String sql = "SELECT resource_id,GROUP_CONCAT(property_id SEPARATOR ',') as property_id_list FROM cms_resource_property WHERE is_valid = 1 AND resource_id is not null GROUP BY resource_id";
+		String sql = "SELECT CONCAT(resource_id,'/',resource_type) as new_id,GROUP_CONCAT(DISTINCT(property_id) SEPARATOR ',') as property_id_list FROM cms_resource_property WHERE is_valid = 1 GROUP BY resource_id,resource_type HAVING new_id is not NULL";
 		List<CmsResourceProperty> rpList = jdbcUtil.getRpList(sql);
 		byte[] family = Bytes.toBytes(profileFamily);
 		List<Put> putList = new ArrayList<>();
 		batchBean.setTableName(itemProfile);
 		for (CmsResourceProperty crp : rpList) {
-			Long resourceId = crp.getResourceId();
+			String resourceId = crp.getResourceId();
 			String[] propertyIdList = crp.getPropertyIdList().split(",");
 			if(propertyIdList.length==0){
 				System.out.println("该资源无对应标签："+resourceId);
@@ -141,7 +153,7 @@ public class HbaseApplicationTests {
 			}
 			Put put = new Put(Bytes.toBytes(resourceId));
 			for (String s : propertyIdList) {
-				put.addColumn(family,Bytes.toBytes(Long.valueOf(s)),Bytes.toBytes(1));
+				put.addColumn(family,Bytes.toBytes(s),Bytes.toBytes(1));
 			}
 			putList.add(put);
 			if(putList.size()>=200){

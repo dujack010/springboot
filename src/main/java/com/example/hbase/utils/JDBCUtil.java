@@ -20,8 +20,13 @@ public class JDBCUtil {
         return list;
     }
 
+    public List<String> getStringList(String query,String idName){
+        List<String> list = template.query(query, (rs, rowNum) -> new String(rs.getString(idName)));
+        return list;
+    }
+
     public List<CmsResourceProperty> getRpList(String query){
-        List<CmsResourceProperty> list = template.query(query, (rs, rowNum) -> new CmsResourceProperty(rs.getLong("resource_id"),rs.getString("property_id_list")));
+        List<CmsResourceProperty> list = template.query(query, (rs, rowNum) -> new CmsResourceProperty(rs.getString("new_id"),rs.getString("property_id_list")));
         return list;
     }
 }
